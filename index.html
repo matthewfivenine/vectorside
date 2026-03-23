@@ -176,90 +176,6 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
-  /* ── VIRTUAL GAMEPAD ── */
-  #gamepad {
-    display: none; /* shown only on touch devices via JS */
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 130px;
-    pointer-events: none; /* children handle their own events */
-    z-index: 30;
-  }
-  /* Joystick zone — left side */
-  #joy-zone {
-    position: absolute;
-    left: 12px; bottom: 12px;
-    width: 110px; height: 110px;
-    pointer-events: all;
-    touch-action: none;
-  }
-  #joy-base {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    border: 2px solid rgba(0,255,255,0.25);
-    background: rgba(0,255,255,0.06);
-    box-shadow: 0 0 12px rgba(0,255,255,0.15);
-  }
-  #joy-knob {
-    position: absolute;
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    background: rgba(0,200,255,0.35);
-    border: 2px solid rgba(0,255,255,0.7);
-    box-shadow: 0 0 10px rgba(0,255,255,0.5);
-    top: 50%; left: 50%;
-    transform: translate(-50%, -50%);
-    transition: background 0.1s;
-  }
-  /* Right buttons */
-  #btn-zone {
-    position: absolute;
-    right: 16px; bottom: 14px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    align-items: center;
-    pointer-events: all;
-    touch-action: none;
-  }
-  .gp-btn {
-    width: 70px; height: 44px;
-    border-radius: 8px;
-    border: 2px solid rgba(0,255,255,0.4);
-    background: rgba(0,30,60,0.7);
-    display: flex; align-items: center; justify-content: center;
-    font-family: 'Orbitron', monospace;
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 2px;
-    color: #0ff;
-    box-shadow: 0 0 10px rgba(0,255,255,0.2);
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    touch-action: none;
-    cursor: pointer;
-    transition: background 0.08s, box-shadow 0.08s;
-  }
-  .gp-btn.active {
-    background: rgba(0,200,255,0.3);
-    box-shadow: 0 0 20px rgba(0,255,255,0.6);
-  }
-  #btn-fire {
-    border-color: rgba(0,255,255,0.6);
-    color: #0ff;
-    text-shadow: 0 0 8px #0ff;
-  }
-  #btn-bomb {
-    border-color: rgba(255,140,0,0.6);
-    color: #f80;
-    text-shadow: 0 0 8px #f80;
-    background: rgba(30,15,0,0.7);
-  }
-  #btn-bomb.active {
-    background: rgba(255,140,0,0.25);
-    box-shadow: 0 0 20px rgba(255,140,0,0.6);
-  }
 </style>
 </head>
 <body>
@@ -294,9 +210,9 @@
       <!-- Touch panel -->
       <div class="ctrl-panel">
         <div class="ctrl-panel-title">✦ TOUCH</div>
-        <div class="ctrl-row"><span class="touch-sym">👆</span><span class="ctrl-icon">SWIPE</span> MOVE</div>
-        <div class="ctrl-row"><span class="touch-sym">☝️</span><span class="ctrl-icon">TAP</span> FIRE</div>
-        <div class="ctrl-row"><span class="touch-sym">✌️</span><span class="ctrl-icon">2×TAP</span> BOMB</div>
+        <div class="ctrl-row"><span class="touch-sym">👉</span><span class="ctrl-icon">SWIPE</span> MOVE SHIP</div>
+        <div class="ctrl-row"><span class="touch-sym">☝️</span><span class="ctrl-icon">TAP</span> FIRE LASER</div>
+        <div class="ctrl-row"><span class="touch-sym">✌️</span><span class="ctrl-icon">2× TAP</span> DROP BOMB</div>
       </div>
     </div>
 
@@ -304,17 +220,6 @@
   </div>
   <div id="controls-hint">WASD/ARROWS · SPACE FIRE · Z BOMB</div>
 
-  <!-- Virtual gamepad (touch only) -->
-  <div id="gamepad">
-    <div id="joy-zone">
-      <div id="joy-base"></div>
-      <div id="joy-knob"></div>
-    </div>
-    <div id="btn-zone">
-      <div class="gp-btn" id="btn-fire">FIRE</div>
-      <div class="gp-btn" id="btn-bomb">BOMB</div>
-    </div>
-  </div>
 </div>
 
 <script>
@@ -769,12 +674,13 @@ function updateBoss(){
     boss.shootTimer = attackRate;
   }
 
-  // Collision with player bullets
-  bullets.forEach((b2, i) => {
-    if(!b2.fromPlayer) return;
+  // Collision with player bullets — safe forward loop
+  for(let i = bullets.length-1; i >= 0; i--){
+    const b2 = bullets[i];
+    if(!b2.fromPlayer) continue;
     if(dist(boss, b2) < 40){
       boss.hp--;
-      bullets.splice(i,1);
+      bullets.splice(i, 1);
       spawnParticles(b2.x, b2.y, '#fff', 5, 3, 20);
       if(boss.hp <= 0){
         spawnExplosion(boss.x, boss.y, '#ff0', true);
@@ -784,10 +690,10 @@ function updateBoss(){
         boss = null;
         bossActive = false;
         setTimeout(()=>{ nextLevel(); }, 2000);
-        return; // stop updateBoss immediately — boss is gone
+        return; // boss dead — stop immediately
       }
     }
-  });
+  }
 
   // Guard: boss may have just been nulled above
   if(!boss) return;
@@ -1038,6 +944,7 @@ function spawnEnemy(){
 
 // ─── KILL PLAYER ─────────────────────────────────────────────────────────────
 function killPlayer(){
+  if(!player) return;
   if(player.invTimer > 0) return;
   spawnExplosion(player.x, player.y, LEVELS[level].color, false);
   lives--;
@@ -1255,17 +1162,16 @@ function drawBackground(){
 // ─── MAIN UPDATE ─────────────────────────────────────────────────────────────
 function update(){
   if(state!=='playing') return;
+  if(!player) return; // safety: player must exist
   frame++;
   bombCooldown--; fireCooldown--;
   const ld = LEVELS[level];
   const scrollSpeed = ld.speed;
 
-  // Terrain scroll
+  // Terrain scroll + extension
   terrain.scrollX += scrollSpeed;
-  // Extend terrain if needed
   const lastPt = terrain.points[terrain.points.length-1];
   if(lastPt.x - terrain.scrollX < W+200){
-    // Add more terrain segments
     const prevLast = terrain.points[terrain.points.length-1];
     const segW = terrain.segW;
     for(let i=1;i<=20;i++){
@@ -1290,12 +1196,9 @@ function update(){
   if(keys['ArrowRight']||keys['d']||keys['D']) ax=1;
   if(keys['ArrowUp']||keys['w']||keys['W']) ay=-1;
   if(keys['ArrowDown']||keys['s']||keys['S']) ay=1;
-
   p.vx = lerp(p.vx, ax*p.speed, 0.2);
   p.vy = lerp(p.vy, ay*p.speed, 0.2);
-  // Boost with up
-  if(keys['ArrowRight']||keys['d']||keys['D']) p.vx = Math.min(p.vx + 0.3, p.speed*1.5);
-
+  if(keys['ArrowRight']||keys['d']||keys['D']) p.vx = Math.min(p.vx+0.3, p.speed*1.5);
   p.x += p.vx; p.y += p.vy;
   p.x = clamp(p.x, 20, W*0.6);
 
@@ -1304,100 +1207,97 @@ function update(){
   if(p.y < tc.top+10){ p.y=tc.top+10; p.vy=0; if(p.invTimer<=0) killPlayer(); }
   if(p.y > tc.bot-10){ p.y=tc.bot-10; p.vy=0; if(p.invTimer<=0) killPlayer(); }
 
-  // Fire
-  if((keys[' ']||keys['z']||keys['Z'])===undefined){} // handled below
+  // Fire / bomb
   if(keys['f']||keys['F']||keys[' ']){
     if(fireCooldown<=0){
       fireBullet();
       fireCooldown = level<3?12: level<6?9: level<9?7:5;
     }
   }
-  if(keys['z']||keys['Z']){
-    doBomb();
-    keys['z']=false; keys['Z']=false;
-  }
+  if(keys['z']||keys['Z']){ doBomb(); keys['z']=false; keys['Z']=false; }
 
   // Spawn enemies
   if(!bossActive){
     enemySpawnTimer--;
     const rate = Math.max(30, 80 - level*7);
-    if(enemySpawnTimer<=0){
-      spawnEnemy();
-      enemySpawnTimer = rate + rndInt(-15,15);
-    }
+    if(enemySpawnTimer<=0){ spawnEnemy(); enemySpawnTimer = rate + rndInt(-15,15); }
   }
 
-  // Update enemies
-  enemies.forEach((e,ei)=>{
+  // --- Update bullets (filter-based, no splice-during-iteration) ---
+  // Mark bullets for removal cleanly
+  const bulletsToRemove = new Set();
+  for(let bi=0; bi<bullets.length; bi++){
+    const b2 = bullets[bi];
+    b2.x+=b2.vx; b2.y+=b2.vy; b2.life--;
+    if(b2.life<=0||b2.x<-10||b2.x>W+10||b2.y<-20||b2.y>H+20){
+      bulletsToRemove.add(bi); continue;
+    }
+    // Enemy bullet hits player
+    if(!b2.fromPlayer && player && player.invTimer<=0 && dist(b2,player)<12){
+      killPlayer();
+      bulletsToRemove.add(bi);
+    }
+  }
+  if(bulletsToRemove.size) bullets = bullets.filter((_,i)=>!bulletsToRemove.has(i));
+
+  // --- Update enemies (filter-based) ---
+  const enemiesToRemove = new Set();
+  for(let ei=0; ei<enemies.length; ei++){
+    if(enemiesToRemove.has(ei)) continue;
+    const e = enemies[ei];
     e.frame++;
     e.shootTimer--;
     const def = ENEMY_DEFS[e.type];
     def.move(e);
 
     // Off screen
-    if(e.x < -40 || e.x > W+40 || e.y < -40 || e.y > H+40){
-      enemies.splice(ei,1); return;
+    if(e.x < -60 || e.x > W+60 || e.y < -60 || e.y > H+60){
+      enemiesToRemove.add(ei); continue;
     }
 
-    // Player collision
-    if(!player.dead && player.invTimer<=0 && dist(e,player)<e.size+10){
+    // Enemy hits player
+    if(player && player.invTimer<=0 && dist(e,player)<e.size+10){
       killPlayer();
       spawnExplosion(e.x,e.y,e.color);
-      enemies.splice(ei,1);
-      return;
+      enemiesToRemove.add(ei); continue;
     }
 
-    // Bullet collision
-    let hit=false;
-    bullets.forEach((b2,bi)=>{
-      if(!b2.fromPlayer) return;
+    // Player bullets hit enemy
+    for(let bi=0; bi<bullets.length; bi++){
+      const b2 = bullets[bi];
+      if(!b2.fromPlayer) continue;
       if(dist(e,b2)<e.size+4){
         e.hp -= b2.bomb ? 3 : 1;
         spawnParticles(b2.x,b2.y,e.color,4,2,15);
-        bullets.splice(bi,1);
+        bullets.splice(bi,1); bi--;
         if(e.hp<=0){
           spawnExplosion(e.x,e.y,e.color);
           addScore(e.score);
           levelEnemiesKilled++;
-          enemies.splice(ei,1);
-          hit=true;
+          enemiesToRemove.add(ei);
+          break;
         }
       }
-    });
-    if(hit) return;
-  });
+    }
+  }
+  if(enemiesToRemove.size) enemies = enemies.filter((_,i)=>!enemiesToRemove.has(i));
 
-  // Check boss trigger
+  // Boss trigger
   if(!bossActive && levelEnemiesKilled >= levelEnemiesNeeded){
     bossActive=true;
     boss = makeBoss(ld.bossType, ld.bossHp);
     bossWarned=true;
   }
 
-  // Update bullets
-  bullets.forEach((b2,i)=>{
-    b2.x+=b2.vx; b2.y+=b2.vy; b2.life--;
-    if(b2.life<=0||b2.x<-10||b2.x>W+10||b2.y<-10||b2.y>H+10){
-      bullets.splice(i,1); return;
-    }
-    // Enemy bullet vs player
-    if(!b2.fromPlayer && player.invTimer<=0){
-      if(dist(b2,player)<12){
-        killPlayer();
-        bullets.splice(i,1);
-      }
-    }
-  });
-
-  // Update particles
-  particles.forEach((p2,i)=>{
+  // Update particles (filter-based)
+  for(let i=0;i<particles.length;i++){
+    const p2=particles[i];
     p2.x+=p2.vx; p2.y+=p2.vy;
     p2.vx*=0.95; p2.vy*=0.95;
     p2.life--;
-    if(p2.life<=0) particles.splice(i,1);
-  });
+  }
+  particles = particles.filter(p2=>p2.life>0);
 
-  // Screen shake decay
   if(shakeTimer>0) shakeTimer--;
 }
 
@@ -1514,149 +1414,121 @@ window.addEventListener('keydown', e=>{
 });
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
 
-// ─── VIRTUAL GAMEPAD (TOUCH) ─────────────────────────────────────────────────
-// Layout: fixed joystick bottom-left, FIRE + BOMB buttons bottom-right.
-// Uses multi-touch: joystick and buttons each track their own pointer ID.
+// ─── TOUCH CONTROLS ──────────────────────────────────────────────────────────
+// Swipe anywhere   → move ship (relative, resets each touch)
+// Single tap       → fire one burst
+// Double-tap       → bomb
+//
+// All listeners on window so full screen is active.
+// Swipe speed is deliberately dampened — large drag = full speed.
 
-const gamepad = document.getElementById('gamepad');
-const joyZone = document.getElementById('joy-zone');
-const joyKnob = document.getElementById('joy-knob');
-const btnFire = document.getElementById('btn-fire');
-const btnBomb = document.getElementById('btn-bomb');
-
-// Show gamepad only on touch-capable devices
-function detectTouch(){ gamepad.style.display = 'block'; window.removeEventListener('touchstart', detectTouch); }
-window.addEventListener('touchstart', detectTouch, {once:true, passive:true});
-
-// ── Joystick state ──
-const joy = {
-  active: false, id: null,
-  baseX: 0, baseY: 0,   // centre of joyZone in client px
-  dx: 0, dy: 0          // normalised [-1..1]
+const tch = {
+  active:     false,
+  id:         null,
+  startX:     0, startY: 0,
+  curX:       0, curY:   0,
+  dx:         0, dy:     0,    // normalised direction [-1..1]
+  moved:      false,           // true once drag exceeds dead-zone
+  lastTap:    0,               // timestamp of previous touchend, for double-tap
+  firePulse:  0,               // frames left to hold the fire key for a tap-shot
 };
 
-// ── Button state ──
-const btnState = { fire: false, bomb: false, fireId: null, bombId: null };
-
-// Recalculate joystick centre (changes if window resizes)
-function joyCenter(){
-  const r = joyZone.getBoundingClientRect();
-  joy.baseX = r.left + r.width  / 2;
-  joy.baseY = r.top  + r.height / 2;
-}
-
-function updateKnob(){
-  const R = joyZone.offsetWidth / 2; // max radius knob can travel
-  const kx = joy.dx * R;
-  const ky = joy.dy * R;
-  joyKnob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
-}
-
-// ── Overlay-advance tap (non-playing states) ──
+// ── Advance non-playing states on any tap ──
 function touchAdvanceState(){
-  if(state==='title'){    startGame(); hideOverlay(); state='levelstart'; }
+  if(state==='title'){         startGame(); hideOverlay(); state='levelstart'; }
   else if(state==='levelstart'){ hideOverlay(); state='playing'; }
-  else if(state==='gameover'){   startGame(); hideOverlay(); state='levelstart'; }
-  else if(state==='win'){        startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='gameover'){ startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='win'){      startGame(); hideOverlay(); state='levelstart'; }
 }
 
-// ── Shared touch dispatcher ──
-// We listen on window for moves/ends so fast drags don't escape the zones.
-
-function onTouchStart(e){
+window.addEventListener('touchstart', e=>{
   e.preventDefault();
   if(state !== 'playing'){ touchAdvanceState(); return; }
+  if(tch.active) return;          // only first finger drives movement
+  const t = e.changedTouches[0];
+  tch.active  = true;
+  tch.id      = t.identifier;
+  tch.startX  = t.clientX;
+  tch.startY  = t.clientY;
+  tch.curX    = t.clientX;
+  tch.curY    = t.clientY;
+  tch.dx      = 0;
+  tch.dy      = 0;
+  tch.moved   = false;
+}, {passive:false});
 
-  for(let i = 0; i < e.changedTouches.length; i++){
-    const t = e.changedTouches[i];
-    const el = document.elementFromPoint(t.clientX, t.clientY);
-
-    if((el === joyZone || el === joyKnob || el === document.getElementById('joy-base')) && !joy.active){
-      joy.active = true;
-      joy.id = t.identifier;
-      joyCenter();
-      joy.dx = 0; joy.dy = 0;
-      updateKnob();
-    } else if(el === btnFire && btnState.fireId === null){
-      btnState.fire = true;
-      btnState.fireId = t.identifier;
-      btnFire.classList.add('active');
-    } else if(el === btnBomb && btnState.bombId === null){
-      btnState.bomb = true;
-      btnState.bombId = t.identifier;
-      btnBomb.classList.add('active');
-      doBomb();
-    }
-  }
-}
-
-function onTouchMove(e){
+window.addEventListener('touchmove', e=>{
   e.preventDefault();
-  if(state !== 'playing') return;
-
-  for(let i = 0; i < e.changedTouches.length; i++){
-    const t = e.changedTouches[i];
-    if(t.identifier === joy.id){
-      joyCenter();
-      const R = joyZone.offsetWidth / 2;
-      const rawDx = t.clientX - joy.baseX;
-      const rawDy = t.clientY - joy.baseY;
-      const dist  = Math.hypot(rawDx, rawDy);
-      // Clamp knob inside base circle
-      const capped = Math.min(dist, R);
-      const angle  = Math.atan2(rawDy, rawDx);
-      joy.dx = Math.cos(angle) * (capped / R);
-      joy.dy = Math.sin(angle) * (capped / R);
-      updateKnob();
-    }
+  if(!tch.active || state !== 'playing') return;
+  let t = null;
+  for(let i=0;i<e.changedTouches.length;i++){
+    if(e.changedTouches[i].identifier === tch.id){ t=e.changedTouches[i]; break; }
   }
-}
+  if(!t) return;
+  tch.curX = t.clientX;
+  tch.curY = t.clientY;
+  const ddx = tch.curX - tch.startX;
+  const ddy = tch.curY - tch.startY;
+  // Dead-zone: 10 screen-px before registering movement
+  if(Math.abs(ddx) > 10 || Math.abs(ddy) > 10) tch.moved = true;
+  // Scale: 140 screen-px of drag = full speed (larger = slower feel)
+  tch.dx = clamp(ddx / 140, -1, 1);
+  tch.dy = clamp(ddy / 140, -1, 1);
+}, {passive:false});
 
-function onTouchEnd(e){
+window.addEventListener('touchend', e=>{
   e.preventDefault();
-  for(let i = 0; i < e.changedTouches.length; i++){
-    const t = e.changedTouches[i];
-    if(t.identifier === joy.id){
-      joy.active = false; joy.id = null;
-      joy.dx = 0; joy.dy = 0;
-      updateKnob();
-    }
-    if(t.identifier === btnState.fireId){
-      btnState.fire = false; btnState.fireId = null;
-      btnFire.classList.remove('active');
-    }
-    if(t.identifier === btnState.bombId){
-      btnState.bomb = false; btnState.bombId = null;
-      btnBomb.classList.remove('active');
-    }
+  let found = false;
+  for(let i=0;i<e.changedTouches.length;i++){
+    if(e.changedTouches[i].identifier === tch.id){ found=true; break; }
   }
-}
+  if(!found) return;
 
-window.addEventListener('touchstart',  onTouchStart,  {passive:false});
-window.addEventListener('touchmove',   onTouchMove,   {passive:false});
-window.addEventListener('touchend',    onTouchEnd,    {passive:false});
-window.addEventListener('touchcancel', onTouchEnd,    {passive:false});
+  // Tap = finger lifted without meaningful movement → single shot
+  if(!tch.moved && state==='playing'){
+    const now = performance.now();
+    // Double-tap = bomb
+    if(now - tch.lastTap < 380){ doBomb(); }
+    else { tch.firePulse = 16; }  // single tap: fire burst (~16 frames)
+    tch.lastTap = now;
+  }
 
-// Also handle overlay tap directly
+  tch.active = false;
+  tch.id     = null;
+  tch.dx     = 0;
+  tch.dy     = 0;
+  tch.moved  = false;
+}, {passive:false});
+
+window.addEventListener('touchcancel', e=>{
+  e.preventDefault();
+  tch.active = false; tch.id = null;
+  tch.dx = 0; tch.dy = 0; tch.moved = false;
+}, {passive:false});
+
+// Overlay tap-to-start
 document.getElementById('overlay').addEventListener('touchend', e=>{
   e.preventDefault(); e.stopPropagation(); touchAdvanceState();
 }, {passive:false});
 
-// ── Patch update() to inject gamepad state ───────────────────────────────────
+// ── Patch update() ────────────────────────────────────────────────────────────
 const _origUpdate = update;
 update = function(){
   if(state === 'playing'){
-    const dead = 0.15;
-    keys['ArrowRight'] = joy.active && joy.dx >  dead;
-    keys['ArrowLeft']  = joy.active && joy.dx < -dead;
-    keys['ArrowDown']  = joy.active && joy.dy >  dead;
-    keys['ArrowUp']    = joy.active && joy.dy < -dead;
-    // FIRE button held down = continuous fire
-    if(btnState.fire) keys[' '] = true;
-    else if(!keys[' ']) keys[' '] = false; // don't clear keyboard space
+    const dead = 0.08;
+    keys['ArrowRight'] = tch.active && tch.dx >  dead;
+    keys['ArrowLeft']  = tch.active && tch.dx < -dead;
+    keys['ArrowDown']  = tch.active && tch.dy >  dead;
+    keys['ArrowUp']    = tch.active && tch.dy < -dead;
+
+    // Fire pulse from tap
+    if(tch.firePulse > 0){ tch.firePulse--; keys[' '] = true; }
+    // (keyboard space key is untouched — update() reads it directly)
   }
   _origUpdate();
 };
+
+// No drag indicator drawn on mobile — intentionally removed.
 
 // Init
 makeStars();
