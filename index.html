@@ -1410,136 +1410,166 @@ window.addEventListener('keydown', e=>{
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
 
 // ─── TOUCH CONTROLS ──────────────────────────────────────────────────────────
-// Swipe = move, tap = shoot, double-tap = bomb
-// We track the active touch and derive direction from drag delta each frame.
+// Controls:
+//   Swipe anywhere on screen  → move ship (relative joystick)
+//   Tap (finger barely moves) → fire one burst
+//   Double-tap                → bomb
+//
+// Listeners are on WINDOW so the full screen is responsive, not just the canvas.
+
 const touch = {
   active: false,
+  id: null,            // pointerId of the active touch
   startX: 0, startY: 0,
-  curX: 0, curY: 0,
-  // Synthetic key state driven by swipe direction
-  dx: 0, dy: 0,
-  // Tap detection
+  curX: 0,   curY: 0,
+  dx: 0,     dy: 0,   // normalised movement direction [-1..1]
   lastTapTime: 0,
-  shooting: false
+  // Tap = touchend that didn't move much; we queue a single shot pulse
+  firePulse: 0,        // frames remaining to hold fire key down
+  isSwiping: false,    // true once drag exceeds dead-zone
 };
 
-function canvasPos(t){
-  // Map a Touch to canvas-space coords, accounting for scaling
+// Convert a client-space touch point into canvas logical coords
+function canvasPos(clientX, clientY){
   const rect = canvas.getBoundingClientRect();
-  const scaleX = W / rect.width;
-  const scaleY = H / rect.height;
   return {
-    x: (t.clientX - rect.left) * scaleX,
-    y: (t.clientY - rect.top)  * scaleY
+    x: (clientX - rect.left) * (W / rect.width),
+    y: (clientY - rect.top)  * (H / rect.height)
   };
 }
 
-canvas.addEventListener('touchstart', e=>{
-  e.preventDefault();
-  const t = e.changedTouches[0];
-  const pos = canvasPos(t);
+function touchAdvanceState(){
+  if(state==='title'){    startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='levelstart'){ hideOverlay(); state='playing'; }
+  else if(state==='gameover'){   startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='win'){        startGame(); hideOverlay(); state='levelstart'; }
+}
 
-  // Handle overlay states (any tap = advance)
-  if(state==='title'||state==='levelstart'||state==='gameover'||state==='win'){
-    if(state==='title'){ startGame(); hideOverlay(); state='levelstart'; }
-    else if(state==='levelstart'){ hideOverlay(); state='playing'; }
-    else if(state==='gameover'){ startGame(); hideOverlay(); state='levelstart'; }
-    else if(state==='win'){ startGame(); hideOverlay(); state='levelstart'; }
+window.addEventListener('touchstart', e=>{
+  e.preventDefault();
+
+  // Non-playing states: any tap advances
+  if(state !== 'playing'){
+    touchAdvanceState();
     return;
   }
 
-  touch.active = true;
-  touch.startX = pos.x; touch.startY = pos.y;
-  touch.curX   = pos.x; touch.curY   = pos.y;
-  touch.dx = 0; touch.dy = 0;
+  // Only track the first active finger for movement
+  if(touch.active) return;
+  const t = e.changedTouches[0];
+  touch.active   = true;
+  touch.id       = t.identifier;
+  touch.startX   = t.clientX;
+  touch.startY   = t.clientY;
+  touch.curX     = t.clientX;
+  touch.curY     = t.clientY;
+  touch.dx       = 0;
+  touch.dy       = 0;
+  touch.isSwiping = false;
 
-  // Double-tap = bomb
+  // Double-tap detection (for bomb)
   const now = performance.now();
-  if(now - touch.lastTapTime < 350){
-    doBomb();
-  }
+  if(now - touch.lastTapTime < 380){ doBomb(); }
   touch.lastTapTime = now;
-
-  // Single tap always fires
-  touch.shooting = true;
 }, {passive:false});
 
-canvas.addEventListener('touchmove', e=>{
+window.addEventListener('touchmove', e=>{
   e.preventDefault();
-  if(!touch.active) return;
-  const pos = canvasPos(e.changedTouches[0]);
-  touch.curX = pos.x;
-  touch.curY = pos.y;
+  if(!touch.active || state !== 'playing') return;
+
+  // Find our tracked touch
+  let t = null;
+  for(let i = 0; i < e.changedTouches.length; i++){
+    if(e.changedTouches[i].identifier === touch.id){ t = e.changedTouches[i]; break; }
+  }
+  if(!t) return;
+
+  touch.curX = t.clientX;
+  touch.curY = t.clientY;
+
   const ddx = touch.curX - touch.startX;
   const ddy = touch.curY - touch.startY;
-  const dead = 12; // dead-zone in canvas px
-  touch.dx = Math.abs(ddx) > dead ? clamp(ddx / 60, -1, 1) : 0;
-  touch.dy = Math.abs(ddy) > dead ? clamp(ddy / 60, -1, 1) : 0;
+  const deadPx = 8; // screen pixels — small so it feels responsive
+
+  if(Math.abs(ddx) > deadPx || Math.abs(ddy) > deadPx){
+    touch.isSwiping = true;
+  }
+
+  // Scale: 80 screen-px of drag = full speed
+  touch.dx = clamp(ddx / 80, -1, 1);
+  touch.dy = clamp(ddy / 80, -1, 1);
 }, {passive:false});
 
-canvas.addEventListener('touchend', e=>{
+window.addEventListener('touchend', e=>{
   e.preventDefault();
-  touch.active = false;
-  touch.dx = 0; touch.dy = 0;
-  touch.shooting = false;
+  if(!touch.active) return;
+
+  // Find our tracked touch
+  let found = false;
+  for(let i = 0; i < e.changedTouches.length; i++){
+    if(e.changedTouches[i].identifier === touch.id){ found = true; break; }
+  }
+  if(!found) return;
+
+  // If finger barely moved → it's a TAP → trigger a short fire burst
+  if(!touch.isSwiping && state === 'playing'){
+    touch.firePulse = 14; // hold fire key for ~14 frames (≈ one shot)
+  }
+
+  touch.active    = false;
+  touch.id        = null;
+  touch.dx        = 0;
+  touch.dy        = 0;
+  touch.isSwiping = false;
 }, {passive:false});
 
-canvas.addEventListener('touchcancel', e=>{
-  touch.active = false;
-  touch.dx = 0; touch.dy = 0;
-  touch.shooting = false;
+window.addEventListener('touchcancel', e=>{
+  e.preventDefault();
+  touch.active    = false;
+  touch.id        = null;
+  touch.dx        = 0;
+  touch.dy        = 0;
+  touch.isSwiping = false;
 }, {passive:false});
 
-// Inject touch state into the update loop via a small hook at the top of update().
-// We override the axis reads by patching the key reads — easiest is to expose
-// touch.dx/dy as synthetic keys read directly in the player move block.
-// (Already done below — see update() patch.)
-
-// Patch update() to also consume touch input for movement + fire.
+// ── Patch update() to inject touch state ─────────────────────────────────────
 const _origUpdate = update;
 update = function(){
-  // Merge touch into movement if no keyboard
-  if(touch.active){
-    // Directly push synthetic movement onto the existing keys object
-    // so the existing player-move code picks it up naturally.
-    // We set fractional values; the lerp in update() will smooth them.
-    if(touch.dx !== 0 || touch.dy !== 0){
-      keys['ArrowRight'] = touch.dx > 0.1;
-      keys['ArrowLeft']  = touch.dx < -0.1;
-      keys['ArrowDown']  = touch.dy > 0.1;
-      keys['ArrowUp']    = touch.dy < -0.1;
-    } else {
-      keys['ArrowRight'] = false;
-      keys['ArrowLeft']  = false;
-      keys['ArrowDown']  = false;
-      keys['ArrowUp']    = false;
+  if(state === 'playing'){
+    // Movement: apply swipe direction as synthetic arrow keys
+    keys['ArrowRight'] = touch.active && touch.dx >  0.1;
+    keys['ArrowLeft']  = touch.active && touch.dx < -0.1;
+    keys['ArrowDown']  = touch.active && touch.dy >  0.1;
+    keys['ArrowUp']    = touch.active && touch.dy < -0.1;
+
+    // Fire: only when a tap pulse is active (NOT while dragging)
+    if(touch.firePulse > 0){
+      touch.firePulse--;
+      keys[' '] = true;
+    } else if(!keys['f'] && !keys['F']){
+      // Only clear space if keyboard isn't also holding it
+      keys[' '] = !!keys[' ']; // leave keyboard space alone
     }
-    // Fire while touching
-    keys[' '] = touch.shooting;
-  } else if(!Object.values(keys).some(v=>v)){
-    // No keyboard and no touch — clear arrow state
-    keys['ArrowRight']=keys['ArrowLeft']=keys['ArrowUp']=keys['ArrowDown']=false;
   }
   _origUpdate();
 };
 
-// Draw a small swipe hint on mobile
+// ── Patch draw() to show swipe indicator ─────────────────────────────────────
 const _origDraw = draw;
 draw = function(){
   _origDraw();
-  if(touch.active && state==='playing'){
-    // Show swipe vector from start to current
-    const sx = touch.startX, sy = touch.startY;
-    const cx = touch.curX,   cy = touch.curY;
+  if(touch.active && touch.isSwiping && state === 'playing'){
+    // Convert start/cur from screen px → canvas logical px for drawing
+    const sp = canvasPos(touch.startX, touch.startY);
+    const cp = canvasPos(touch.curX,   touch.curY);
     ctx.save();
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle='#0ff'; ctx.lineWidth=2; ctx.shadowColor='#0ff'; ctx.shadowBlur=8;
-    // Origin circle
-    ctx.beginPath(); ctx.arc(sx,sy,18,0,Math.PI*2); ctx.stroke();
-    // Direction line
-    ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(cx,cy); ctx.stroke();
-    // Tip dot
-    ctx.fillStyle='#0ff'; ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 0.3;
+    ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2;
+    ctx.shadowColor = '#0ff'; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(sp.x, sp.y, 20, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(cp.x, cp.y); ctx.stroke();
+    ctx.fillStyle = '#0ff';
+    ctx.beginPath(); ctx.arc(cp.x, cp.y, 5, 0, Math.PI*2); ctx.fill();
     ctx.restore();
   }
 };
