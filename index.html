@@ -14,19 +14,23 @@
     align-items: center;
     justify-content: center;
     min-height: 100vh;
+    min-height: 100dvh;
     font-family: 'Share Tech Mono', monospace;
     overflow: hidden;
+    touch-action: none;
   }
   #gameWrapper {
     position: relative;
-    width: 800px;
-    height: 600px;
+    width: min(800px, 100vw);
+    height: min(600px, 56.25vw, 100dvh);
+    aspect-ratio: 4/3;
   }
   canvas {
     display: block;
+    width: 100%;
+    height: 100%;
     border: 1px solid #0ff;
     box-shadow: 0 0 20px #0ff, 0 0 60px #00f, inset 0 0 20px rgba(0,255,255,0.05);
-    image-rendering: pixelated;
   }
   #hud {
     position: absolute;
@@ -34,54 +38,140 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 8px 14px;
+    padding: clamp(4px,1.2vw,10px) clamp(6px,1.8vw,14px);
     pointer-events: none;
     font-family: 'Orbitron', monospace;
-    font-size: 11px;
+    font-size: clamp(8px,1.4vw,13px);
     color: #0ff;
     text-shadow: 0 0 8px #0ff;
     z-index: 10;
   }
   #hud .hud-section { display: flex; flex-direction: column; gap: 2px; }
-  #hud .label { color: #06f; font-size: 9px; letter-spacing: 2px; }
-  #hud .value { color: #0ff; font-size: 13px; font-weight: 700; }
-  #lives-display { display: flex; gap: 4px; align-items: center; margin-top: 2px; }
+  #hud .label { color: #06f; font-size: clamp(6px,1vw,10px); letter-spacing: 1px; }
+  #hud .value { color: #0ff; font-size: clamp(9px,1.6vw,14px); font-weight: 700; }
+  #lives-display { display: flex; gap: 3px; align-items: center; margin-top: 2px; }
+
+  /* ── OVERLAY ── */
   #overlay {
     position: absolute;
     top: 0; left: 0; right: 0; bottom: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: rgba(0,0,0,0.88);
+    background: rgba(0,0,0,0.92);
     z-index: 20;
     font-family: 'Orbitron', monospace;
     text-align: center;
     color: #0ff;
+    padding: clamp(6px,3vw,30px) clamp(8px,4vw,36px);
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    overflow: hidden;
   }
   #overlay h1 {
-    font-size: 52px; font-weight: 900;
+    font-size: clamp(18px, 7vw, 52px);
+    font-weight: 900;
     color: #0ff;
-    text-shadow: 0 0 20px #0ff, 0 0 50px #0af;
-    letter-spacing: 6px;
-    margin-bottom: 8px;
+    text-shadow: 0 0 16px #0ff, 0 0 40px #0af;
+    letter-spacing: clamp(1px, 1.2vw, 8px);
+    margin-bottom: clamp(1px, 0.5vw, 6px);
     animation: pulse 1.5s ease-in-out infinite;
+    line-height: 1;
+    white-space: nowrap;
   }
   #overlay .subtitle {
-    font-size: 13px; color: #06f; letter-spacing: 4px; margin-bottom: 30px;
+    font-size: clamp(6px, 1.6vw, 13px);
+    color: #06f;
+    letter-spacing: clamp(1px, 0.8vw, 4px);
+    margin-bottom: clamp(5px, 1.5vw, 18px);
+    white-space: nowrap;
+  }
+  /* Two-column grid: keyboard left, touch right */
+  #overlay .ctrl-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(5px, 1.2vw, 14px);
+    width: 100%;
+    max-width: min(480px, 92vw);
+    margin-bottom: clamp(6px, 1.5vw, 16px);
+  }
+  #overlay .ctrl-panel {
+    border: 1px solid #024;
+    border-radius: 4px;
+    background: rgba(0,20,50,0.55);
+    padding: clamp(5px, 1.2vw, 10px) clamp(6px, 1.5vw, 12px);
+    display: flex; flex-direction: column;
+    gap: clamp(3px, 0.7vw, 6px);
+  }
+  #overlay .ctrl-panel-title {
+    font-size: clamp(5px, 1vw, 9px);
+    color: #06f;
+    letter-spacing: 2px;
+    padding-bottom: clamp(2px, 0.5vw, 5px);
+    border-bottom: 1px solid #024;
+    margin-bottom: clamp(2px, 0.4vw, 4px);
+    white-space: nowrap;
+  }
+  #overlay .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: clamp(4px, 0.9vw, 8px);
+    font-size: clamp(5px, 1.2vw, 10px);
+    color: #0af;
+    white-space: nowrap;
+  }
+  #overlay .ctrl-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #06f;
+    color: #0ff;
+    font-size: clamp(5px, 1.1vw, 10px);
+    padding: clamp(1px,0.3vw,3px) clamp(3px,0.7vw,7px);
+    min-width: clamp(20px, 3.5vw, 34px);
+    border-radius: 3px;
+    background: rgba(0,60,120,0.3);
+    font-family: 'Share Tech Mono', monospace;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  #overlay .touch-sym {
+    font-size: clamp(11px, 2.2vw, 18px);
+    line-height: 1;
+    flex-shrink: 0;
   }
   #overlay .prompt {
-    font-size: 14px; color: #ff0; letter-spacing: 3px;
+    font-size: clamp(8px, 2vw, 15px);
+    color: #ff0;
+    letter-spacing: clamp(1px, 0.8vw, 3px);
     animation: blink 1s step-end infinite;
+    margin-top: clamp(3px, 1vw, 10px);
+    white-space: nowrap;
   }
   #overlay .levelinfo {
-    font-size: 28px; color: #0f0; font-weight: 700;
-    text-shadow: 0 0 15px #0f0; margin-bottom: 10px;
-    letter-spacing: 4px;
+    font-size: clamp(13px, 4.5vw, 28px);
+    color: #0f0; font-weight: 700;
+    text-shadow: 0 0 15px #0f0;
+    margin-bottom: clamp(4px, 1vw, 10px);
+    letter-spacing: clamp(2px, 1vw, 4px);
   }
-  #overlay .levelname { font-size: 16px; color: #0af; margin-bottom: 20px; letter-spacing: 3px; }
+  #overlay .levelname {
+    font-size: clamp(8px, 2.2vw, 16px);
+    color: #0af;
+    margin-bottom: clamp(8px, 2vw, 20px);
+    letter-spacing: clamp(1px, 0.8vw, 3px);
+  }
   #controls-hint {
-    position: absolute; bottom: 6px; left: 0; right: 0;
-    text-align: center; font-size: 9px; color: #026;
-    letter-spacing: 2px; pointer-events: none; z-index: 10;
+    position: absolute; bottom: 3px; left: 0; right: 0;
+    text-align: center;
+    font-size: clamp(5px, 0.8vw, 8px);
+    color: #023;
+    letter-spacing: 1px;
+    pointer-events: none; z-index: 10;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
@@ -107,12 +197,27 @@
   <div id="overlay">
     <h1>VECTOR HAVOC</h1>
     <div class="subtitle">★ VECTOR SHOOTER ★</div>
-    <div style="color:#0f0;font-size:11px;margin-bottom:25px;letter-spacing:2px">
-      ARROWS/WASD: MOVE &nbsp;|&nbsp; SPACE: FIRE &nbsp;|&nbsp; Z: BOMB
+
+    <div class="ctrl-grid">
+      <!-- Keyboard panel -->
+      <div class="ctrl-panel">
+        <div class="ctrl-panel-title">⌨ KEYBOARD</div>
+        <div class="ctrl-row"><span class="ctrl-icon">WASD</span> MOVE</div>
+        <div class="ctrl-row"><span class="ctrl-icon">SPACE</span> FIRE</div>
+        <div class="ctrl-row"><span class="ctrl-icon">Z</span> BOMB</div>
+      </div>
+      <!-- Touch panel -->
+      <div class="ctrl-panel">
+        <div class="ctrl-panel-title">✦ TOUCH</div>
+        <div class="ctrl-row"><span class="touch-sym">👆</span><span class="ctrl-icon">SWIPE</span> MOVE</div>
+        <div class="ctrl-row"><span class="touch-sym">☝️</span><span class="ctrl-icon">TAP</span> FIRE</div>
+        <div class="ctrl-row"><span class="touch-sym">✌️</span><span class="ctrl-icon">2×TAP</span> BOMB</div>
+      </div>
     </div>
-    <div class="prompt">PRESS SPACE TO BEGIN</div>
+
+    <div class="prompt">TAP OR PRESS SPACE TO BEGIN</div>
   </div>
-  <div id="controls-hint">← → MOVE &nbsp;|&nbsp; SPACE FIRE &nbsp;|&nbsp; Z BOMB &nbsp;&nbsp;·&nbsp;&nbsp; MOBILE: SWIPE MOVE · TAP SHOOT · DOUBLE-TAP BOMB</div>
+  <div id="controls-hint">WASD/ARROWS · SPACE FIRE · Z BOMB &nbsp;|&nbsp; TOUCH: SWIPE · TAP · 2×TAP BOMB</div>
 </div>
 
 <script>
@@ -834,7 +939,7 @@ function killPlayer(){
   updateHUD();
   if(lives <= 0){
     state = 'gameover';
-    showOverlay('GAME OVER', '', 'PRESS SPACE TO RESTART');
+    showOverlay('GAME OVER', '', 'TAP OR PRESS SPACE TO RESTART');
     return;
   }
   player.x = 120; player.y = H/2;
@@ -903,7 +1008,7 @@ function startLevel(){
   bombCooldown=0; fireCooldown=0;
 
   const ld = LEVELS[level];
-  showOverlay('', '', 'PRESS SPACE TO LAUNCH', `LEVEL ${level+1}`, ld.name);
+  showOverlay('', '', 'TAP OR PRESS SPACE TO LAUNCH', `LEVEL ${level+1}`, ld.name);
   state='levelstart';
 }
 
@@ -911,7 +1016,7 @@ function nextLevel(){
   level++;
   if(level >= LEVELS.length){
     state='win';
-    showOverlay('VICTORY!','ALL SYSTEMS DESTROYED','PRESS SPACE TO RESTART');
+    showOverlay('VICTORY!','ALL SYSTEMS DESTROYED','TAP OR PRESS SPACE TO RESTART');
     return;
   }
   bombs = Math.min(bombs+1, 5);
@@ -1276,6 +1381,17 @@ function loop(){
   draw();
   requestAnimationFrame(loop);
 }
+
+// Overlay tap-to-start — works for mouse click AND touch
+function advanceFromOverlay(){
+  if(state==='title'){ startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='levelstart'){ hideOverlay(); state='playing'; }
+  else if(state==='gameover'){ startGame(); hideOverlay(); state='levelstart'; }
+  else if(state==='win'){ startGame(); hideOverlay(); state='levelstart'; }
+}
+const overlayEl = document.getElementById('overlay');
+overlayEl.addEventListener('click', advanceFromOverlay);
+overlayEl.addEventListener('touchend', e=>{ e.preventDefault(); e.stopPropagation(); advanceFromOverlay(); }, {passive:false});
 
 // ─── INPUT ───────────────────────────────────────────────────────────────────
 window.addEventListener('keydown', e=>{
