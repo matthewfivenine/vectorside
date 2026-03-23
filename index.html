@@ -175,6 +175,91 @@
   }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.7} }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* ── VIRTUAL GAMEPAD ── */
+  #gamepad {
+    display: none; /* shown only on touch devices via JS */
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 130px;
+    pointer-events: none; /* children handle their own events */
+    z-index: 30;
+  }
+  /* Joystick zone — left side */
+  #joy-zone {
+    position: absolute;
+    left: 12px; bottom: 12px;
+    width: 110px; height: 110px;
+    pointer-events: all;
+    touch-action: none;
+  }
+  #joy-base {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 2px solid rgba(0,255,255,0.25);
+    background: rgba(0,255,255,0.06);
+    box-shadow: 0 0 12px rgba(0,255,255,0.15);
+  }
+  #joy-knob {
+    position: absolute;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: rgba(0,200,255,0.35);
+    border: 2px solid rgba(0,255,255,0.7);
+    box-shadow: 0 0 10px rgba(0,255,255,0.5);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    transition: background 0.1s;
+  }
+  /* Right buttons */
+  #btn-zone {
+    position: absolute;
+    right: 16px; bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    pointer-events: all;
+    touch-action: none;
+  }
+  .gp-btn {
+    width: 70px; height: 44px;
+    border-radius: 8px;
+    border: 2px solid rgba(0,255,255,0.4);
+    background: rgba(0,30,60,0.7);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: #0ff;
+    box-shadow: 0 0 10px rgba(0,255,255,0.2);
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    cursor: pointer;
+    transition: background 0.08s, box-shadow 0.08s;
+  }
+  .gp-btn.active {
+    background: rgba(0,200,255,0.3);
+    box-shadow: 0 0 20px rgba(0,255,255,0.6);
+  }
+  #btn-fire {
+    border-color: rgba(0,255,255,0.6);
+    color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+  }
+  #btn-bomb {
+    border-color: rgba(255,140,0,0.6);
+    color: #f80;
+    text-shadow: 0 0 8px #f80;
+    background: rgba(30,15,0,0.7);
+  }
+  #btn-bomb.active {
+    background: rgba(255,140,0,0.25);
+    box-shadow: 0 0 20px rgba(255,140,0,0.6);
+  }
 </style>
 </head>
 <body>
@@ -217,7 +302,19 @@
 
     <div class="prompt">TAP OR PRESS SPACE TO BEGIN</div>
   </div>
-  <div id="controls-hint">WASD/ARROWS · SPACE FIRE · Z BOMB &nbsp;|&nbsp; TOUCH: SWIPE · TAP · 2×TAP BOMB</div>
+  <div id="controls-hint">WASD/ARROWS · SPACE FIRE · Z BOMB</div>
+
+  <!-- Virtual gamepad (touch only) -->
+  <div id="gamepad">
+    <div id="joy-zone">
+      <div id="joy-base"></div>
+      <div id="joy-knob"></div>
+    </div>
+    <div id="btn-zone">
+      <div class="gp-btn" id="btn-fire">FIRE</div>
+      <div class="gp-btn" id="btn-bomb">BOMB</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -1417,35 +1514,45 @@ window.addEventListener('keydown', e=>{
 });
 window.addEventListener('keyup', e=>{ keys[e.key]=false; });
 
-// ─── TOUCH CONTROLS ──────────────────────────────────────────────────────────
-// Controls:
-//   Swipe anywhere on screen  → move ship (relative joystick)
-//   Tap (finger barely moves) → fire one burst
-//   Double-tap                → bomb
-//
-// Listeners are on WINDOW so the full screen is responsive, not just the canvas.
+// ─── VIRTUAL GAMEPAD (TOUCH) ─────────────────────────────────────────────────
+// Layout: fixed joystick bottom-left, FIRE + BOMB buttons bottom-right.
+// Uses multi-touch: joystick and buttons each track their own pointer ID.
 
-const touch = {
-  active: false,
-  id: null,            // pointerId of the active touch
-  startX: 0, startY: 0,
-  curX: 0,   curY: 0,
-  dx: 0,     dy: 0,   // normalised movement direction [-1..1]
-  lastTapTime: 0,
-  // Tap = touchend that didn't move much; we queue a single shot pulse
-  firePulse: 0,        // frames remaining to hold fire key down
-  isSwiping: false,    // true once drag exceeds dead-zone
+const gamepad = document.getElementById('gamepad');
+const joyZone = document.getElementById('joy-zone');
+const joyKnob = document.getElementById('joy-knob');
+const btnFire = document.getElementById('btn-fire');
+const btnBomb = document.getElementById('btn-bomb');
+
+// Show gamepad only on touch-capable devices
+function detectTouch(){ gamepad.style.display = 'block'; window.removeEventListener('touchstart', detectTouch); }
+window.addEventListener('touchstart', detectTouch, {once:true, passive:true});
+
+// ── Joystick state ──
+const joy = {
+  active: false, id: null,
+  baseX: 0, baseY: 0,   // centre of joyZone in client px
+  dx: 0, dy: 0          // normalised [-1..1]
 };
 
-// Convert a client-space touch point into canvas logical coords
-function canvasPos(clientX, clientY){
-  const rect = canvas.getBoundingClientRect();
-  return {
-    x: (clientX - rect.left) * (W / rect.width),
-    y: (clientY - rect.top)  * (H / rect.height)
-  };
+// ── Button state ──
+const btnState = { fire: false, bomb: false, fireId: null, bombId: null };
+
+// Recalculate joystick centre (changes if window resizes)
+function joyCenter(){
+  const r = joyZone.getBoundingClientRect();
+  joy.baseX = r.left + r.width  / 2;
+  joy.baseY = r.top  + r.height / 2;
 }
 
+function updateKnob(){
+  const R = joyZone.offsetWidth / 2; // max radius knob can travel
+  const kx = joy.dx * R;
+  const ky = joy.dy * R;
+  joyKnob.style.transform = `translate(calc(-50% + ${kx}px), calc(-50% + ${ky}px))`;
+}
+
+// ── Overlay-advance tap (non-playing states) ──
 function touchAdvanceState(){
   if(state==='title'){    startGame(); hideOverlay(); state='levelstart'; }
   else if(state==='levelstart'){ hideOverlay(); state='playing'; }
@@ -1453,133 +1560,102 @@ function touchAdvanceState(){
   else if(state==='win'){        startGame(); hideOverlay(); state='levelstart'; }
 }
 
-window.addEventListener('touchstart', e=>{
+// ── Shared touch dispatcher ──
+// We listen on window for moves/ends so fast drags don't escape the zones.
+
+function onTouchStart(e){
   e.preventDefault();
+  if(state !== 'playing'){ touchAdvanceState(); return; }
 
-  // Non-playing states: any tap advances
-  if(state !== 'playing'){
-    touchAdvanceState();
-    return;
-  }
-
-  // Only track the first active finger for movement
-  if(touch.active) return;
-  const t = e.changedTouches[0];
-  touch.active   = true;
-  touch.id       = t.identifier;
-  touch.startX   = t.clientX;
-  touch.startY   = t.clientY;
-  touch.curX     = t.clientX;
-  touch.curY     = t.clientY;
-  touch.dx       = 0;
-  touch.dy       = 0;
-  touch.isSwiping = false;
-
-  // Double-tap detection (for bomb)
-  const now = performance.now();
-  if(now - touch.lastTapTime < 380){ doBomb(); }
-  touch.lastTapTime = now;
-}, {passive:false});
-
-window.addEventListener('touchmove', e=>{
-  e.preventDefault();
-  if(!touch.active || state !== 'playing') return;
-
-  // Find our tracked touch
-  let t = null;
   for(let i = 0; i < e.changedTouches.length; i++){
-    if(e.changedTouches[i].identifier === touch.id){ t = e.changedTouches[i]; break; }
+    const t = e.changedTouches[i];
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+
+    if((el === joyZone || el === joyKnob || el === document.getElementById('joy-base')) && !joy.active){
+      joy.active = true;
+      joy.id = t.identifier;
+      joyCenter();
+      joy.dx = 0; joy.dy = 0;
+      updateKnob();
+    } else if(el === btnFire && btnState.fireId === null){
+      btnState.fire = true;
+      btnState.fireId = t.identifier;
+      btnFire.classList.add('active');
+    } else if(el === btnBomb && btnState.bombId === null){
+      btnState.bomb = true;
+      btnState.bombId = t.identifier;
+      btnBomb.classList.add('active');
+      doBomb();
+    }
   }
-  if(!t) return;
+}
 
-  touch.curX = t.clientX;
-  touch.curY = t.clientY;
-
-  const ddx = touch.curX - touch.startX;
-  const ddy = touch.curY - touch.startY;
-  const deadPx = 8; // screen pixels — small so it feels responsive
-
-  if(Math.abs(ddx) > deadPx || Math.abs(ddy) > deadPx){
-    touch.isSwiping = true;
-  }
-
-  // Scale: 80 screen-px of drag = full speed
-  touch.dx = clamp(ddx / 80, -1, 1);
-  touch.dy = clamp(ddy / 80, -1, 1);
-}, {passive:false});
-
-window.addEventListener('touchend', e=>{
+function onTouchMove(e){
   e.preventDefault();
-  if(!touch.active) return;
+  if(state !== 'playing') return;
 
-  // Find our tracked touch
-  let found = false;
   for(let i = 0; i < e.changedTouches.length; i++){
-    if(e.changedTouches[i].identifier === touch.id){ found = true; break; }
+    const t = e.changedTouches[i];
+    if(t.identifier === joy.id){
+      joyCenter();
+      const R = joyZone.offsetWidth / 2;
+      const rawDx = t.clientX - joy.baseX;
+      const rawDy = t.clientY - joy.baseY;
+      const dist  = Math.hypot(rawDx, rawDy);
+      // Clamp knob inside base circle
+      const capped = Math.min(dist, R);
+      const angle  = Math.atan2(rawDy, rawDx);
+      joy.dx = Math.cos(angle) * (capped / R);
+      joy.dy = Math.sin(angle) * (capped / R);
+      updateKnob();
+    }
   }
-  if(!found) return;
+}
 
-  // If finger barely moved → it's a TAP → trigger a short fire burst
-  if(!touch.isSwiping && state === 'playing'){
-    touch.firePulse = 14; // hold fire key for ~14 frames (≈ one shot)
-  }
-
-  touch.active    = false;
-  touch.id        = null;
-  touch.dx        = 0;
-  touch.dy        = 0;
-  touch.isSwiping = false;
-}, {passive:false});
-
-window.addEventListener('touchcancel', e=>{
+function onTouchEnd(e){
   e.preventDefault();
-  touch.active    = false;
-  touch.id        = null;
-  touch.dx        = 0;
-  touch.dy        = 0;
-  touch.isSwiping = false;
+  for(let i = 0; i < e.changedTouches.length; i++){
+    const t = e.changedTouches[i];
+    if(t.identifier === joy.id){
+      joy.active = false; joy.id = null;
+      joy.dx = 0; joy.dy = 0;
+      updateKnob();
+    }
+    if(t.identifier === btnState.fireId){
+      btnState.fire = false; btnState.fireId = null;
+      btnFire.classList.remove('active');
+    }
+    if(t.identifier === btnState.bombId){
+      btnState.bomb = false; btnState.bombId = null;
+      btnBomb.classList.remove('active');
+    }
+  }
+}
+
+window.addEventListener('touchstart',  onTouchStart,  {passive:false});
+window.addEventListener('touchmove',   onTouchMove,   {passive:false});
+window.addEventListener('touchend',    onTouchEnd,    {passive:false});
+window.addEventListener('touchcancel', onTouchEnd,    {passive:false});
+
+// Also handle overlay tap directly
+document.getElementById('overlay').addEventListener('touchend', e=>{
+  e.preventDefault(); e.stopPropagation(); touchAdvanceState();
 }, {passive:false});
 
-// ── Patch update() to inject touch state ─────────────────────────────────────
+// ── Patch update() to inject gamepad state ───────────────────────────────────
 const _origUpdate = update;
 update = function(){
   if(state === 'playing'){
-    // Movement: apply swipe direction as synthetic arrow keys
-    keys['ArrowRight'] = touch.active && touch.dx >  0.1;
-    keys['ArrowLeft']  = touch.active && touch.dx < -0.1;
-    keys['ArrowDown']  = touch.active && touch.dy >  0.1;
-    keys['ArrowUp']    = touch.active && touch.dy < -0.1;
-
-    // Fire: only when a tap pulse is active (NOT while dragging)
-    if(touch.firePulse > 0){
-      touch.firePulse--;
-      keys[' '] = true;
-    } else if(!keys['f'] && !keys['F']){
-      // Only clear space if keyboard isn't also holding it
-      keys[' '] = !!keys[' ']; // leave keyboard space alone
-    }
+    const dead = 0.15;
+    keys['ArrowRight'] = joy.active && joy.dx >  dead;
+    keys['ArrowLeft']  = joy.active && joy.dx < -dead;
+    keys['ArrowDown']  = joy.active && joy.dy >  dead;
+    keys['ArrowUp']    = joy.active && joy.dy < -dead;
+    // FIRE button held down = continuous fire
+    if(btnState.fire) keys[' '] = true;
+    else if(!keys[' ']) keys[' '] = false; // don't clear keyboard space
   }
   _origUpdate();
-};
-
-// ── Patch draw() to show swipe indicator ─────────────────────────────────────
-const _origDraw = draw;
-draw = function(){
-  _origDraw();
-  if(touch.active && touch.isSwiping && state === 'playing'){
-    // Convert start/cur from screen px → canvas logical px for drawing
-    const sp = canvasPos(touch.startX, touch.startY);
-    const cp = canvasPos(touch.curX,   touch.curY);
-    ctx.save();
-    ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = '#0ff'; ctx.lineWidth = 2;
-    ctx.shadowColor = '#0ff'; ctx.shadowBlur = 8;
-    ctx.beginPath(); ctx.arc(sp.x, sp.y, 20, 0, Math.PI*2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(cp.x, cp.y); ctx.stroke();
-    ctx.fillStyle = '#0ff';
-    ctx.beginPath(); ctx.arc(cp.x, cp.y, 5, 0, Math.PI*2); ctx.fill();
-    ctx.restore();
-  }
 };
 
 // Init
